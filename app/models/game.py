@@ -1,9 +1,9 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from app.models.sudoku import SudokuGame
@@ -32,19 +32,28 @@ class Game(SQLModel, table=True):
 
     status: GameStatus = Field(default=GameStatus.ACTIVE)
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    completed_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True)),
+    )
+    completed_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True)),
+    )
 
     player_1: User = Relationship(
         back_populates="games_as_p1",
         sa_relationship_kwargs={"foreign_keys": "Game.player_1_id"},
     )
-    player_2: User | None = Relationship(
+    player_2: Optional["User"] = Relationship(
         back_populates="games_as_p2",
         sa_relationship_kwargs={"foreign_keys": "Game.player_2_id"},
     )
 
-    sudoku_details: SudokuGame | None = Relationship(
+    sudoku_details: Optional["SudokuGame"] = Relationship(
         back_populates="game", sa_relationship_kwargs={"uselist": False}
     )

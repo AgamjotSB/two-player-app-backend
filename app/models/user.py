@@ -2,8 +2,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from pydantic import EmailStr
-from sqlmodel import Field, Relationship, SQLModel
+from pydantic import BaseModel, EmailStr
+from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
     from app.models.game import Game
@@ -17,7 +17,10 @@ class User(SQLModel, table=True):
     username: str = Field(index=True, unique=True, max_length=20)
     password: str = Field(max_length=100)
     display_name: str | None = Field(default=None, max_length=20)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(DateTime(timezone=True)),
+    )
 
     games_as_p1: list[Game] = Relationship(
         back_populates="player_1",
