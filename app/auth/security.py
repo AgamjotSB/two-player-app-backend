@@ -5,6 +5,7 @@ import bcrypt
 import jwt
 
 from app.config import Config
+from app.models.user import TokenResponse, User
 
 
 def hash_password(plain_password: str) -> str:
@@ -39,3 +40,9 @@ def decode_access_token(token: str) -> UUID | None:
 
     except jwt.InvalidTokenError, KeyError, ValueError:
         return None
+
+
+def issue_access_token(user: User) -> TokenResponse:
+    assert user.user_id is not None, "User missing user_id"
+    token = create_access_token(user.user_id)
+    return TokenResponse(access_token=token)

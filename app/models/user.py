@@ -31,3 +31,27 @@ class User(SQLModel, table=True):
         back_populates="player_2",
         sa_relationship_kwargs={"foreign_keys": "Game.player_2_id"},
     )
+
+
+class UserRegister(BaseModel):
+    email: EmailStr
+    username: str
+    password: str
+    display_name: str | None = None
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserPublic(BaseModel):
+    user_id: uuid.UUID
+    username: str
+    display_name: str | None
+    created_at: datetime
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
