@@ -27,13 +27,15 @@ def create_access_token(user_id: UUID) -> str:
         "exp": now + timedelta(minutes=Config.jwt_expire_minutes),
     }
 
-    return jwt.encode(payload, Config.jwt_secret, Config.jwt_algorithm)
+    return jwt.encode(payload, Config.jwt_secret, algorithm=Config.jwt_algorithm)
 
 
 def decode_access_token(token: str) -> UUID | None:
     try:
-        payload = jwt.decode(token, Config.jwt_secret, [Config.jwt_algorithm])
+        payload = jwt.decode(
+            token, Config.jwt_secret, algorithms=[Config.jwt_algorithm]
+        )
         return UUID(payload["sub"])
 
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError, KeyError, ValueError:
         return None
