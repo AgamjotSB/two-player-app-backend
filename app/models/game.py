@@ -16,6 +16,7 @@ class GameType(str, Enum):
 
 
 class GameStatus(str, Enum):
+    WAITING = "waiting"
     ACTIVE = "active"
     COMPLETED = "completed"
     ABANDONED = "abandoned"
