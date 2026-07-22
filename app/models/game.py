@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
+from pydantic import BaseModel
 from sqlmodel import Column, DateTime, Field, Relationship, SQLModel
 
 if TYPE_CHECKING:
@@ -58,3 +59,8 @@ class Game(SQLModel, table=True):
     sudoku_details: Optional["SudokuGame"] = Relationship(
         back_populates="game", sa_relationship_kwargs={"uselist": False}
     )
+
+
+class GameCreateResponse(BaseModel):
+    game_id: uuid.UUID
+    invite_url: str

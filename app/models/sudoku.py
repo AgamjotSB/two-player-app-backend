@@ -2,7 +2,10 @@ import uuid
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel
 from sqlmodel import Field, Relationship, SQLModel
+
+from app.models.game import GameStatus
 
 if TYPE_CHECKING:
     from app.models.game import Game
@@ -24,3 +27,16 @@ class SudokuGame(SQLModel, table=True):
     difficulty: SudokuDifficulty = Field(default=SudokuDifficulty.MEDIUM)
 
     game: Game = Relationship(back_populates="sudoku_details")
+
+
+class SudokuGameCreate(BaseModel):
+    difficulty: SudokuDifficulty
+
+
+class SudokuGameState(BaseModel):
+    game_id: uuid.UUID
+    status: GameStatus
+    player_1_id: uuid.UUID
+    player_2_id: uuid.UUID | None
+    initial_state: str
+    difficulty: SudokuDifficulty

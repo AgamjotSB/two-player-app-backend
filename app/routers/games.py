@@ -1,3 +1,122 @@
-from fastapi import APIRouter
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import select
+
+from app.auth.dependencies import get_current_user
+from app.clients.youdosudoku import fetch_sudoku_puzzle
+from app.config import Config
+from app.database import get_session
+from app.models.game import Game, GameCreateResponse, GameStatus
+from app.models.sudoku import SudokuGame, SudokuGameCreate, SudokuGameState
+from app.models.user import User
 
 router = APIRouter()
+
+
+@router.post(
+    "/sudoku", response_model=GameCreateResponse, status_code=status.HTTP_201_CREATED
+)
+async def create_sudoku_game(
+    data: SudokuGameCreate,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    puzzle, solution = await fetch_sudoku_puzzle(data.difficulty)
+    assert current_user.user_id is not None
+
+    game = Game(player_1_id=current_user.user_id, status=GameStatus.WAITING)
+    session.add(game)
+    await session.flush()
+
+    assert game.game_id is not None
+    sudoku_game = SudokuGame(
+        game_id=game.game_id,
+        initial_state=puzzle,
+        solution_state=solution,
+        difficulty=data.difficulty,
+    )
+    session.add(sudoku_game)
+
+    await session.commit()
+
+    invite_url = f"{Config.frontend_url}/game/{game.game_id}"
+
+    return GameCreateResponse(game_id=game.game_id, invite_url=invite_url)
+
+
+# TODO: intialize game in redis
+@router.post("/{game_id}/join", response_model=SudokuGameState)
+async def join_sudoku_game(
+    game_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    game = await _load_game_or_404(game_id, session)
+
+    is_player_1 = game.player_1_id == current_user.user_id
+    is_player_2 = game.player_2_id == current_user.user_id
+
+    if is_player_1 or is_player_2:
+        return await _build_sudoku_state(game, session)
+
+    if game.player_2_id is None:
+        game.player_2_id = current_user.user_id
+        game.status = GameStatus.ACTIVE
+        session.add(game)
+        await session.commit()
+        return await _build_sudoku_state(game, session)
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="This game is not available to join",
+    )
+
+
+# TODO: check redis
+@router.get("/{game_id}", response_model=SudokuGameState)
+async def get_sudoku_game(
+    game_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    game = await _load_game_or_404(game_id, session)
+
+    if current_user.user_id not in (game.player_1_id, game.player_2_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not a player in this game",
+        )
+
+    return await _build_sudoku_state(game, session)
+
+
+async def _load_game_or_404(game_id: uuid.UUID, session: AsyncSession) -> Game:
+    result = await session.execute(select(Game).where(Game.game_id == game_id))
+    game = result.scalar_one_or_none()
+    if game is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Game not found",
+        )
+    return game
+
+
+async def _build_sudoku_state(game: Game, session: AsyncSession) -> SudokuGameState:
+    result = await session.execute(
+        select(SudokuGame).where(SudokuGame.game_id == game.game_id)
+    )
+
+    sudoku_game = result.scalar_one_or_none()
+    assert sudoku_game is not None, "sudoku_game row missing for matching game_id"
+    assert game.game_id is not None
+
+    return SudokuGameState(
+        game_id=game.game_id,
+        status=game.status,
+        player_1_id=game.player_1_id,
+        player_2_id=game.player_2_id,
+        initial_state=sudoku_game.initial_state,
+        difficulty=sudoku_game.difficulty,
+    )
