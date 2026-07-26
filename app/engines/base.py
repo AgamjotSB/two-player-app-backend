@@ -17,8 +17,11 @@ class BaseGameEngine(ABC):
     @abstractmethod
     async def process_move(
         self, player_id: str, move_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Validates a move, updates Redis, and returns the broadcast payload.
+    ) -> tuple[Dict[str, Any], bool]:
+        """Validates a move, updates Redis, and returns
+        (broadcast payload, sender_is_behind).
+        sender_is_behind tells the caller to also push a
+        direct sync_state to the sender.
         Raises GameEngineError if the move is illegal."""
 
     @abstractmethod

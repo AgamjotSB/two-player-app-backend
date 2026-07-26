@@ -1,3 +1,4 @@
+import json
 import uuid
 
 import redis.asyncio as redis
@@ -14,6 +15,7 @@ from app.models.game import Game, GameCreateResponse, GameStatus
 from app.models.sudoku import SudokuGame, SudokuGameCreate, SudokuGameState
 from app.models.user import User
 from app.redis_client import get_redis
+from app.websockets.connection_manager import game_channel
 
 router = APIRouter()
 
@@ -70,6 +72,13 @@ async def join_sudoku_game(
         game.status = GameStatus.ACTIVE
         session.add(game)
         await session.commit()
+
+        await redis_client.publish(
+            game_channel(str(game.game_id)),
+            json.dumps(
+                {"type": "player_joined", "player_id": str(current_user.user_id)}
+            ),
+        )
 
         sudoku_game = await _load_sudoku_game_or_404(game_id, session)
 

@@ -12,6 +12,7 @@ class SudokuMoveData(BaseModel):
     row: int = Field(ge=0, le=8)
     col: int = Field(ge=0, le=8)
     value: int = Field(ge=0, le=9)  # 0 clears the cell
+    last_seen_sequence: int = Field(ge=0)  # sequence client last received from server
 
 
 class SudokuEngine(BaseGameEngine):
@@ -37,7 +38,10 @@ class SudokuEngine(BaseGameEngine):
 
     async def process_move(
         self, player_id: str, move_data: Dict[str, int]
-    ) -> Dict[str, Any]:
+    ) -> tuple[Dict[str, Any], bool]:
+        """Returns (broadcast_payload, sender_is_behind).
+        sender_is_behind tells the caller to also push a
+        direct sync_state to the sender"""
         try:
             move = SudokuMoveData(**move_data)
         except ValueError as e:
@@ -57,18 +61,19 @@ class SudokuEngine(BaseGameEngine):
             and isinstance(sequence, str)
         )
 
+        server_sequence = int(sequence)
         idx = move.row * BOARD_SIZE + move.col
         if initial[idx] != "0":
             raise GameEngineError("cannot modify a given clue cell")
 
         new_current = current[:idx] + str(move.value) + current[idx + 1 :]
-        new_sequence = int(sequence) + 1
+        new_sequence = server_sequence + 1
 
         await self.redis.hset(
             key, mapping={"current": new_current, "sequence": new_sequence}
         )
 
-        return {
+        payload = {
             "type": "move",
             "game_type": "sudoku",
             "player_id": player_id,
@@ -77,6 +82,9 @@ class SudokuEngine(BaseGameEngine):
             "value": move.value,
             "sequence": new_sequence,
         }
+
+        sender_is_behind = move.last_seen_sequence < server_sequence
+        return payload, sender_is_behind
 
     async def check_win_condition(self) -> bool:
         current, solution = await self.redis.hmget(self._key(), ["current", "solution"])
