@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import redis.asyncio as redis
@@ -29,6 +30,18 @@ class HandshakeError(Exception):
 class ClientDisconnected(Exception):
     """Client closed the connection before completing handshake.
     Nothing to clean up, nothing to close."""
+
+
+@dataclass
+class WSContext:
+    """Bundles everything a per-message handler needs."""
+
+    websocket: WebSocket
+    redis_client: redis.Redis
+    engine: SudokuEngine
+    game_id: uuid.UUID
+    game_id_str: str
+    user_id_str: str
 
 
 async def _handshake(websocket: WebSocket, game_id: uuid.UUID) -> tuple[User, Game]:
@@ -71,6 +84,34 @@ async def _handshake(websocket: WebSocket, game_id: uuid.UUID) -> tuple[User, Ga
     return user, game
 
 
+async def _handle_move(ctx: WSContext, raw: dict) -> None:
+    try:
+        payload, sender_is_behind = await ctx.engine.process_move(ctx.user_id_str, raw)
+    except GameEngineError as e:
+        await ctx.websocket.send_json({"type": "error", "detail": str(e)})
+        return
+
+    await ctx.redis_client.publish(game_channel(ctx.game_id_str), json.dumps(payload))
+
+    if sender_is_behind:
+        try:
+            state = await ctx.engine.sync_state()
+            await ctx.websocket.send_json(state)  # update stale state of sender
+        except GameEngineError:
+            pass
+
+    if await ctx.engine.check_win_condition():
+        await _complete_game(ctx.game_id)
+        await ctx.redis_client.publish(
+            game_channel(ctx.game_id_str),
+            json.dumps({"type": "game_over", "sequence": payload["sequence"]}),
+        )
+
+
+async def _handle_unknown_action(ctx: WSContext, raw: dict) -> None:
+    await ctx.websocket.send_json({"type": "error", "detail": "unknown action"})
+
+
 @router.websocket("/game/{game_id}")
 async def websocket_game_endpoint(
     websocket: WebSocket,
@@ -95,6 +136,15 @@ async def websocket_game_endpoint(
 
     engine = SudokuEngine(game_id_str, redis_client)
 
+    ctx = WSContext(
+        websocket=websocket,
+        redis_client=redis_client,
+        engine=engine,
+        game_id=game_id,
+        game_id_str=game_id_str,
+        user_id_str=user_id_str,
+    )
+
     try:
         # send reconnecting/joining player the current game state
         if game.status == GameStatus.ACTIVE:
@@ -107,31 +157,11 @@ async def websocket_game_endpoint(
         while True:
             raw = await websocket.receive_json()
 
-            if raw.get("action") != "move":
-                await websocket.send_json({"type": "error", "detail": "unknown action"})
-                continue
-
-            try:
-                payload, sender_is_behind = await engine.process_move(user_id_str, raw)
-            except GameEngineError as e:
-                await websocket.send_json({"type": "error", "detail": str(e)})
-                continue
-
-            await redis_client.publish(game_channel(game_id_str), json.dumps(payload))
-
-            if sender_is_behind:
-                try:
-                    state = await engine.sync_state()
-                    await websocket.send_json(state)  # update stale state of sender
-                except GameEngineError:
-                    pass
-
-            if await engine.check_win_condition():
-                await _complete_game(game_id)
-                await redis_client.publish(
-                    game_channel(game_id_str),
-                    json.dumps({"type": "game_over", "sequence": payload["sequence"]}),
-                )
+            match raw.get("action"):
+                case "move":
+                    await _handle_move(ctx, raw)
+                case _:
+                    await _handle_unknown_action(ctx, raw)
 
     except WebSocketDisconnect:
         pass
