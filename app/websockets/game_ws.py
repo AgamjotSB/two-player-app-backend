@@ -22,7 +22,13 @@ router = APIRouter()
 
 
 class HandshakeError(Exception):
-    """Any failure during the auth/membership handshake closes the socket with the caller."""
+    """Any failure during the auth/membership handshake closes
+    the socket with the caller."""
+
+
+class ClientDisconnected(Exception):
+    """Client closed the connection before completing handshake.
+    Nothing to clean up, nothing to close."""
 
 
 async def _handshake(websocket: WebSocket, game_id: uuid.UUID) -> tuple[User, Game]:
@@ -31,8 +37,12 @@ async def _handshake(websocket: WebSocket, game_id: uuid.UUID) -> tuple[User, Ga
             websocket.receive_json(), timeout=Config.ws_auth_timeout_seconds
         )
 
-    except (asyncio.TimeoutError, ValueError) as e:
-        raise HandshakeError("timed out or malformed auth message") from e
+    except asyncio.TimeoutError as e:
+        raise HandshakeError("timed out waiting for auth message") from e
+    except WebSocketDisconnect as e:
+        raise ClientDisconnected() from e
+    except ValueError as e:
+        raise HandshakeError("malformed auth message") from e
 
     if raw.get("action") != "auth" or not raw.get("token"):
         raise HandshakeError("first message must be {'action': 'auth', 'token': ...}")
@@ -70,6 +80,8 @@ async def websocket_game_endpoint(
     await websocket.accept()
     try:
         user, game = await _handshake(websocket, game_id)
+    except ClientDisconnected:
+        return
     except HandshakeError as e:
         await websocket.close(code=1008, reason=str(e))
         return
