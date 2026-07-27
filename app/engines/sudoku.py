@@ -1,19 +1,11 @@
 from typing import Any, Dict
 
-from pydantic import BaseModel, Field
-
 from app.engines.base import BaseGameEngine, GameEngineError
+from app.models.sudoku import SudokuMoveData
 
 BOARD_SIZE = 9
 NUM_CELLS = BOARD_SIZE * BOARD_SIZE
 STATE_TTL_SECONDS = 60 * 60 * 24 * 2  # 2 days
-
-
-class SudokuMoveData(BaseModel):
-    row: int = Field(ge=0, le=8)
-    col: int = Field(ge=0, le=8)
-    value: int = Field(ge=0, le=9)  # 0 clears the cell
-    last_seen_sequence: int = Field(ge=0)  # sequence client last received from server
 
 
 class SudokuEngine(BaseGameEngine):

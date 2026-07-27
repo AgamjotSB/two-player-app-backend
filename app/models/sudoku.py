@@ -40,3 +40,10 @@ class SudokuGameState(BaseModel):
     player_2_id: uuid.UUID | None
     initial_state: str
     difficulty: SudokuDifficulty
+
+
+class SudokuMoveData(BaseModel):
+    row: int = Field(ge=0, le=8)
+    col: int = Field(ge=0, le=8)
+    value: int = Field(ge=0, le=9)  # 0 clears the cell
+    last_seen_sequence: int = Field(ge=0)  # sequence client last received from server
