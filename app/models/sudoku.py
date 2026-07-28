@@ -47,3 +47,10 @@ class SudokuMoveData(BaseModel):
     col: int = Field(ge=0, le=8)
     value: int = Field(ge=0, le=9)  # 0 clears the cell
     last_seen_sequence: int = Field(ge=0)  # sequence client last received from server
+
+
+class CandidateToggleData(BaseModel):
+    row: int = Field(ge=0, le=8)
+    col: int = Field(ge=0, le=8)
+    digit: int = Field(ge=1, le=9)  # candidates are never 0
+    last_seen_sequence: int = Field(ge=0)

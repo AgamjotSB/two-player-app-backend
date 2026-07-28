@@ -108,6 +108,25 @@ async def _handle_move(ctx: WSContext, raw: dict) -> None:
         )
 
 
+async def _handle_toggle_candidate(ctx: WSContext, raw: dict) -> None:
+    try:
+        payload, sender_is_behind = await ctx.engine.toggle_candidate(
+            ctx.user_id_str, raw
+        )
+    except GameEngineError as e:
+        await ctx.websocket.send_json({"type": "error", "detail": str(e)})
+        return
+
+    await ctx.redis_client.publish(game_channel(ctx.game_id_str), json.dumps(payload))
+
+    if sender_is_behind:
+        try:
+            state = await ctx.engine.sync_state()
+            await ctx.websocket.send_json(state)
+        except GameEngineError:
+            pass
+
+
 async def _handle_unknown_action(ctx: WSContext, raw: dict) -> None:
     await ctx.websocket.send_json({"type": "error", "detail": "unknown action"})
 
@@ -160,6 +179,8 @@ async def websocket_game_endpoint(
             match raw.get("action"):
                 case "move":
                     await _handle_move(ctx, raw)
+                case "toggle_candidate":
+                    await _handle_toggle_candidate(ctx, raw)
                 case _:
                     await _handle_unknown_action(ctx, raw)
 
