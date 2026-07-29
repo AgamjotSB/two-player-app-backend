@@ -39,6 +39,9 @@ class SudokuGameState(BaseModel):
     player_1_id: uuid.UUID
     player_2_id: uuid.UUID | None
     initial_state: str
+    current_state: str
+    sequence: int | None
+    candidates: dict[str, int]
     difficulty: SudokuDifficulty
 
 

@@ -10,6 +10,7 @@ from app.auth.dependencies import get_current_user
 from app.clients.youdosudoku import fetch_sudoku_puzzle
 from app.config import Config
 from app.database import get_session
+from app.engines.base import GameEngineError
 from app.engines.sudoku import SudokuEngine
 from app.models.game import Game, GameCreateResponse, GameStatus
 from app.models.sudoku import SudokuGame, SudokuGameCreate, SudokuGameState
@@ -65,7 +66,7 @@ async def join_sudoku_game(
 
     if is_player_1 or is_player_2:
         sudoku_game = await _load_sudoku_game_or_404(game_id, session)
-        return _sudoku_state_from(game, sudoku_game)
+        return await _resolve_sudoku_state(game, sudoku_game, redis_client)
 
     if game.player_2_id is None:
         game.player_2_id = current_user.user_id
@@ -88,7 +89,7 @@ async def join_sudoku_game(
             sudoku_game.initial_state, sudoku_game.solution_state
         )
 
-        return _sudoku_state_from(game, sudoku_game)
+        return await _resolve_sudoku_state(game, sudoku_game, redis_client)
 
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -101,6 +102,7 @@ async def get_sudoku_game(
     game_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
+    redis_client: redis.Redis = Depends(get_redis),
 ):
     game = await _load_game_or_404(game_id, session)
 
@@ -111,9 +113,7 @@ async def get_sudoku_game(
         )
 
     sudoku_game = await _load_sudoku_game_or_404(game_id, session)
-    return _sudoku_state_from(game, sudoku_game)
-    # TODO: for ACTIVE games, read board state from Redis instead of
-    # Postgres's static initial_state which needs the websocket/engine wiring
+    return await _resolve_sudoku_state(game, sudoku_game, redis_client)
 
 
 async def _load_game_or_404(game_id: uuid.UUID, session: AsyncSession) -> Game:
@@ -141,7 +141,49 @@ async def _load_sudoku_game_or_404(
     return sudoku_game
 
 
-def _sudoku_state_from(game: Game, sudoku_game: SudokuGame) -> SudokuGameState:
+async def _resolve_sudoku_state(
+    game: Game, sudoku_game: SudokuGame, redis_client: redis.Redis
+) -> SudokuGameState:
+
+    if game.status == GameStatus.ACTIVE:
+        engine = SudokuEngine(str(game.game_id), redis_client)
+        try:
+            state = await engine.sync_state()
+            return _sudoku_state_from(
+                game,
+                sudoku_game,
+                current_state=state["current"],
+                sequence=state["sequence"],
+                candidates=state["candidates"],
+            )
+        except GameEngineError:
+            pass  # Redis missing/expired despite ACTIVE
+
+    if game.status == GameStatus.COMPLETED:
+        return _sudoku_state_from(
+            game,
+            sudoku_game,
+            current_state=sudoku_game.solution_state,
+            sequence=None,
+            candidates={},
+        )
+
+    return _sudoku_state_from(
+        game,
+        sudoku_game,
+        current_state=sudoku_game.initial_state,
+        sequence=0,
+        candidates={},
+    )
+
+
+def _sudoku_state_from(
+    game: Game,
+    sudoku_game: SudokuGame,
+    current_state: str,
+    sequence: int | None,
+    candidates: dict,
+) -> SudokuGameState:
     assert game.game_id is not None
 
     return SudokuGameState(
@@ -150,5 +192,8 @@ def _sudoku_state_from(game: Game, sudoku_game: SudokuGame) -> SudokuGameState:
         player_1_id=game.player_1_id,
         player_2_id=game.player_2_id,
         initial_state=sudoku_game.initial_state,
+        current_state=current_state,
+        sequence=sequence,
+        candidates=candidates,
         difficulty=sudoku_game.difficulty,
     )
