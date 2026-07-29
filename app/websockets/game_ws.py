@@ -165,6 +165,7 @@ async def websocket_game_endpoint(
     )
 
     try:
+        await websocket.send_json({"type": "auth_ok"})
         # send reconnecting/joining player the current game state
         if game.status == GameStatus.ACTIVE:
             try:
