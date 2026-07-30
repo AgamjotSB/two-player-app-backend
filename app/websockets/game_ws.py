@@ -127,6 +127,16 @@ async def _handle_toggle_candidate(ctx: WSContext, raw: dict) -> None:
             pass
 
 
+async def _handle_highlight_cell(ctx: WSContext, raw: dict) -> None:
+    try:
+        payload = await ctx.engine.build_highlight_payload(ctx.user_id_str, raw)
+    except GameEngineError as e:
+        await ctx.websocket.send_json({"type": "error", "detail": str(e)})
+        return
+
+    await ctx.redis_client.publish(game_channel(ctx.game_id_str), json.dumps(payload))
+
+
 async def _handle_unknown_action(ctx: WSContext, raw: dict) -> None:
     await ctx.websocket.send_json({"type": "error", "detail": "unknown action"})
 
@@ -182,6 +192,8 @@ async def websocket_game_endpoint(
                     await _handle_move(ctx, raw)
                 case "toggle_candidate":
                     await _handle_toggle_candidate(ctx, raw)
+                case "highlight_cell":
+                    await _handle_highlight_cell(ctx, raw)
                 case _:
                     await _handle_unknown_action(ctx, raw)
 

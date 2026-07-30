@@ -2,7 +2,7 @@ import uuid
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlmodel import Field, Relationship, SQLModel
 
 from app.models.game import GameStatus
@@ -57,3 +57,14 @@ class CandidateToggleData(BaseModel):
     col: int = Field(ge=0, le=8)
     digit: int = Field(ge=1, le=9)  # candidates are never 0
     last_seen_sequence: int = Field(ge=0)
+
+
+class HighlightCellData(BaseModel):
+    row: int | None = Field(default=None, ge=0, le=8)
+    col: int | None = Field(default=None, ge=0, le=8)
+
+    @model_validator(mode="after")
+    def check_both_or_neither(self):
+        if (self.row is None) != (self.col is None):
+            raise ValueError("row and col must both be set or both be null")
+        return self

@@ -1,7 +1,7 @@
 from typing import Any, Dict
 
 from app.engines.base import BaseGameEngine, GameEngineError
-from app.models.sudoku import CandidateToggleData, SudokuMoveData
+from app.models.sudoku import CandidateToggleData, HighlightCellData, SudokuMoveData
 
 BOARD_SIZE = 9
 NUM_CELLS = BOARD_SIZE * BOARD_SIZE
@@ -179,6 +179,21 @@ class SudokuEngine(BaseGameEngine):
 
         sender_is_behind = toggle.last_seen_sequence < prior_sequence
         return payload, sender_is_behind
+
+    async def build_highlight_payload(
+        self, player_id: str, data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        try:
+            highlight = HighlightCellData(**data)
+        except ValueError as e:
+            raise GameEngineError(f"malformed highlight payload: {e}") from e
+
+        return {
+            "type": "cell_highlighted",
+            "player_id": player_id,
+            "row": highlight.row,
+            "col": highlight.col,
+        }
 
     async def _eliminate_candidates(self, idx: int, digit: int) -> list[Dict]:
         candidates_key = self._candidates_key()
