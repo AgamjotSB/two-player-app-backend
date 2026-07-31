@@ -38,6 +38,8 @@ class SudokuGameState(BaseModel):
     status: GameStatus
     player_1_id: uuid.UUID
     player_2_id: uuid.UUID | None
+    player_1_username: str | None = None
+    player_2_username: str | None = None
     initial_state: str
     current_state: str
     sequence: int | None
