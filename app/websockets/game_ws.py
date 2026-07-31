@@ -185,7 +185,19 @@ async def websocket_game_endpoint(
                 pass  # game not initialized in redis (p1 connected before p2 joined)
 
         while True:
-            raw = await websocket.receive_json()
+            try:
+                raw = await websocket.receive_json()
+            except ValueError, KeyError, TypeError:
+                await websocket.send_json(
+                    {"type": "error", "detail": "malformed message: not valid JSON"}
+                )
+                continue
+
+            if not isinstance(raw, dict):
+                await websocket.send_json(
+                    {"type": "error", "detail": "malformed message: not a JSON object"}
+                )
+                continue
 
             match raw.get("action"):
                 case "move":
