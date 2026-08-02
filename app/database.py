@@ -5,8 +5,9 @@ from sqlmodel import SQLModel
 from app.config import Config
 
 engine = create_async_engine(
-    Config.database_url, echo=True
-)  # TODO: echo=True logs SQL, turn off later
+    Config.database_url,
+    echo=False,
+)
 
 
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
